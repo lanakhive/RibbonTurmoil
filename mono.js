@@ -1,3 +1,4 @@
+(function() {
 "use strict";
 //create container
 var container = document.createElement("div");
@@ -22,18 +23,6 @@ canvas.height = canvas.getBoundingClientRect().height;
 var ctx = canvas.getContext("2d");
 window.addEventListener('resize',function(){figuresize();},false);
 
-if (canvas.mozRequestFullScreen)
-{
-	var but = document.createElement("button");
-	but.innerHTML='□';
-	but.style.cssText="width:30px;height:30px;margin:10px;padding:0;position:absolute;bottom:0;right:0;background:#444;border:1px solid;border-radius:0;color:#eee;box-shadow:none;font:20px sans-serif;text-align:center;opacity:.5;-moz-user-select:none;-webkit-user-select: none";
-	container.appendChild(but);
-	but.addEventListener('click',function(){
-		console.log("Enter fullscreen");
-		canvas.mozRequestFullScreen();
-	});
-}
-
 function randI(min, max) {
   min = Math.ceil(min);
   max = Math.floor(max);
@@ -55,17 +44,22 @@ var env = {
 	cradius : 25,
 	cgap : 25,
 	thickness : 8,
-	thingcount : 30,
+	thingcount : 50,
 	offset : 0,
-	timescale : 1,
+	timescale : 0.5,
+	fps: 0,
+	fpslock: true,
 };
 //array of things
 var things = [];
 
-var bgpattern = (function createBG()
+var bgpattern;
+
+function createBG()
 {
 	var bgcanvas = document.createElement('canvas');
 	var bgctx = bgcanvas.getContext('2d');
+	var pi = Math.PI;
 	bgcanvas.width = 2*env.cradius+env.cgap;
 	bgcanvas.height = 2*env.cradius+env.cgap;
 	bgctx.fillStyle = 'rgb(13,10,10)';	
@@ -74,34 +68,35 @@ var bgpattern = (function createBG()
 	var p = 2*env.cradius+env.cgap;
 	bgctx.strokeStyle='rgb(25,20,20)';
 	bgctx.lineWidth = env.thickness;
+	if (bgctx.lineWidth > env.cradius) bgctx.lineWidth = env.cradius;
 	bgctx.beginPath();
-	bgctx.arc(0,0,env.cradius,2*Math.PI,false);
+	bgctx.arc(0,0,env.cradius,2*pi,false);
 	bgctx.stroke();
 	bgctx.beginPath();
-	bgctx.arc(0,p,env.cradius,0,2*Math.PI,false);
+	bgctx.arc(0,p,env.cradius,0,2*pi,false);
 	bgctx.stroke();
 	bgctx.beginPath();
-	bgctx.arc(p,0,env.cradius,0,2*Math.PI,false);
+	bgctx.arc(p,0,env.cradius,0,2*pi,false);
 	bgctx.stroke();
 	bgctx.beginPath();
-	bgctx.arc(p,p,env.cradius,0,2*Math.PI,false);
+	bgctx.arc(p,p,env.cradius,0,2*pi,false);
 	bgctx.stroke();
 	bgctx.fillStyle='rgb(18,15,15)';
 	bgctx.beginPath();
-	bgctx.arc(0,0,env.cradius/2,0,2*Math.PI,false);
+	bgctx.arc(0,0,env.cradius/2,0,2*pi,false);
 	bgctx.fill();
 	bgctx.beginPath();
-	bgctx.arc(0,p,env.cradius/2,0,2*Math.PI,false);
+	bgctx.arc(0,p,env.cradius/2,0,2*pi,false);
 	bgctx.fill();
 	bgctx.beginPath();
-	bgctx.arc(p,0,env.cradius/2,0,2*Math.PI,false);
+	bgctx.arc(p,0,env.cradius/2,0,2*pi,false);
 	bgctx.fill();
 	bgctx.beginPath();
-	bgctx.arc(p,p,env.cradius/2,0,2*Math.PI,false);
+	bgctx.arc(p,p,env.cradius/2,0,2*pi,false);
 	bgctx.fill();
 	var bgp = ctx.createPattern(bgcanvas, 'repeat');
 	return bgp;
-})();
+}
 
 function createCSeg(thisx, thisy, thisd, cw, dend)
 {
@@ -265,12 +260,12 @@ function updateThing(thing, dt)
 	{
 		if (part.cw)
 		{
-			part.d = part.d + speed*dt*4*ts;
+			part.d = part.d + speed*dt*4*ts*((1/env.cradius)*20);
 			if (part.d > part.dend) {part.d = part.dend; newSegment = true;}
 		}
 		else
 		{
-			part.d = part.d - speed*dt*4*ts;
+			part.d = part.d - speed*dt*4*ts*((1/env.cradius)*20);
 			if (part.d < part.dend) {part.d = part.dend; newSegment = true;}
 		}
 	}
@@ -308,12 +303,12 @@ function updateThing(thing, dt)
 	{
 		if (part.cw)
 		{
-			part.ds = part.ds + endspeed*dt*4*ts;
+			part.ds = part.ds + endspeed*dt*4*ts*((1/env.cradius)*20);
 			if (part.ds > part.d) {endSegment = true;}
 		}
 		else
 		{
-			part.ds = part.ds - endspeed*dt*4*ts;
+			part.ds = part.ds - endspeed*dt*4*ts*((1/env.cradius)*20);
 			if (part.ds < part.d) {endSegment = true;}
 		}
 	}
@@ -348,9 +343,9 @@ function updateThing(thing, dt)
 	if (newSegment) addSegment(thing);
 	if (endSegment) removeSegment(thing);
 	thing.speed = thing.speed + 35*dt*ts;
-	if (thing.speed > 200) thing.speed = 200;
+	if (thing.speed > 240) thing.speed = 200;
 	thing.endspeed = thing.endspeed + 45*dt*ts;
-	if (thing.endspeed > 220) thing.endspeed = 240;
+	if (thing.endspeed > 260) thing.endspeed = 240;
 }
 
 function drawThing(thing)
@@ -405,9 +400,9 @@ function update(dt)
 	//slowly add more things
 	if (things.length < env.thingcount)
 	{
-		if (randI(1,30) == 10)
+		if (randI(1,10) == 10)
 		{
-			things.push(createThing(randI(3,env.xcount-3), randI(3, env.ycount-3)));
+			things.push(createThing(randI(1,env.xcount-0), randI(1, env.ycount-0)));
 		}
 	}
 	//remove finished things
@@ -431,6 +426,7 @@ function draw(dt)
 	var time = dt;
 	ctx.fillStyle = bgpattern;
 	ctx.fillRect(0,0,canvas.width, canvas.height);
+	//old background draw (not cached)
 	/*
 	for (var ix=0;ix<=env.xcount;ix++)
 	{
@@ -456,20 +452,22 @@ function draw(dt)
 	*/
 
 	ctx.lineWidth = env.thickness;
+	if (ctx.lineWidth > env.cradius) ctx.lineWidth = env.cradius;
 	ctx.lineCap = 'round';
 	for (var i=0;i<things.length;i++)
 	{
 		drawThing(things[i]);
 		//debugThing(t,i)
 	}
-	if (true)
+	//debug info onscreen
+	if (false)
 	{
 		ctx.font = "12px sans-serif";
 		ctx.fillStyle = "rgb(100,100,100)";
 		ctx.textBaseline = "top";
 		ctx.fillText("Things: "+things.length+"/"+env.thingcount,10,10);
-		//should prob use rolling average
-		ctx.fillText("FPS: "+(1/dt).toFixed(2)+" ("+(dt*1000).toFixed(2)+"ms)",10,25);
+		ctx.fillText("FPS: "+env.fps,10,25);
+		ctx.fillText("env: "+JSON.stringify(env, null, 2),10,40);
 	}
 }
 
@@ -477,36 +475,79 @@ function figuresize()
 {
 	canvas.width = canvas.getBoundingClientRect().width;
 	canvas.height = canvas.getBoundingClientRect().height;
-	console.log("Resize");
 	var w = canvas.width;
 	var h = canvas.height;
 	env.xcount = Math.ceil(w/(2*env.cradius+env.cgap))-1;
 	env.ycount = Math.ceil(h/(2*env.cradius+env.cgap))-1;
 	env.offset = 0;
+	bgpattern = createBG();
 }
 
 function run()
 {
-	console.log("starting run");
 	figuresize();
-	var lastUpdate = Date.now();
-	var lastTimestep = 0;
-	var dt = 0;
-	//var myInterval = setInterval(tick, 0);
-	window.requestAnimationFrame(tick);
+	var last = performance.now() / 1000;
+	var fpsThreshold = 0;	
+	window.requestAnimationFrame(tickweb);
 
-	function tick(timestep) {
-		//var now = Date.now();
-		//var dt = now - lastUpdate;
-		//lastUpdate = now;
-		dt = timestep - lastTimestep;
-		lastTimestep =  timestep;
-		if (dt<0) { dt=0; }
+	function tickweb() {
+		// Keep animating
+		window.requestAnimationFrame(tickweb);
 
-		dt = dt/1000;
+		// Figure out how much time passed since the last animation
+		var now = performance.now() / 1000;
+		var dt = Math.min(now - last, 1);
+		last = now;
+
+		// If there is an FPS limit, abort updating the animation if we reached the desired FPS
+		if (env.fps > 0 && env.fpslock) {
+			fpsThreshold += dt;
+			if (fpsThreshold < 1.0 / env.fps) {
+				return;
+			}
+			fpsThreshold -= 1.0 / env.fps;
+		}
+
+		// My wallpaper animation/drawing code goes here!
 		update(dt);
 		draw(dt);
-		window.requestAnimationFrame(tick);
 	}
 }
+
+//wallpaper engine events
+window.wallpaperPropertyListener = {
+	applyUserProperties: function(properties) {
+		if (properties.linecount) {
+			env.thingcount = properties.linecount.value;
+			while (things.length > env.thingcount) {
+				things.pop();
+			}
+		}
+		if (properties.linethick) {
+			env.thickness = properties.linethick.value;
+			bgpattern = createBG();
+		}
+		if (properties.circleradius) {
+			env.cradius = properties.circleradius.value;
+			env.cgap = properties.circleradius.value;
+			figuresize();
+			//FIXME line segment absolute positions are cached so must be cleared
+			while (things.length > 0) {
+				things.pop();
+			}
+		}
+		if (properties.playbackrate) {
+			env.timescale = properties.playbackrate.value/100.0;
+		}
+		if (properties.fpslock) {
+			env.fpslock = properties.fpslock.value;
+		}
+	},
+	applyGeneralProperties: function(properties) {
+		if (properties.fps) {
+			env.fps = properties.fps;
+		}
+	}
+};
 run();
+})();

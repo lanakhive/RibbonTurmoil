@@ -1,0 +1,69 @@
+{
+	"description" : "These capricious ribbons wind and wiggle around husky pegs. Each ribbon assumes a color, yet we cannot ascertain its intention.",
+	"file" : "index.html",
+	"general" : 
+	{
+		"properties" : 
+		{
+			"circleradius" : 
+			{
+				"editable" : false,
+				"max" : 100,
+				"min" : 10,
+				"order" : 3,
+				"text" : "Peg Size",
+				"type" : "slider",
+				"value" : 25
+			},
+			"fpslock" : 
+			{
+				"order" : 5,
+				"text" : "Lock Frame Rate",
+				"type" : "bool",
+				"value" : false
+			},
+			"linecount" : 
+			{
+				"editable" : false,
+				"max" : 200,
+				"min" : 1,
+				"order" : 1,
+				"text" : "Ribbons",
+				"type" : "slider",
+				"value" : 30
+			},
+			"linethick" : 
+			{
+				"editable" : false,
+				"max" : 20,
+				"min" : 3,
+				"order" : 2,
+				"text" : "Ribbon Thickness",
+				"type" : "slider",
+				"value" : 8
+			},
+			"playbackrate" : 
+			{
+				"editable" : false,
+				"max" : 300,
+				"min" : 10,
+				"order" : 4,
+				"text" : "Speed",
+				"type" : "slider",
+				"value" : 50
+			},
+			"schemecolor" : 
+			{
+				"order" : 6,
+				"text" : "ui_browse_properties_scheme_color",
+				"type" : "color",
+				"value" : "0.09803921568627451 0.0784313725490196 0.0784313725490196"
+			}
+		}
+	},
+	"preview" : "preview.gif",
+	"tags" : [ "Abstract" ],
+	"title" : "Ribbon Turmoil",
+	"type" : "web",
+	"visibility" : "public"
+}
