@@ -1,27 +1,6 @@
-(function() {
 "use strict";
-//create container
-var container = document.createElement("div");
-container.style.width="100%";
-container.style.height="100%";
-container.style.position="relative";
-container.id = "linesdemo";
-//create canvas
-var canvas = document.createElement("canvas");
-canvas.style.width="100%";
-canvas.style.height="100%";
-canvas.style.backgroundColor = "rgb(13,10,10)";
-canvas.mozOpaque = true;
-container.appendChild(canvas);
-//insert at position
-var scripts = document.getElementsByTagName('script')
-var script = scripts[scripts.length-1];
-script.parentNode.insertBefore(container,script);
-//set size
-canvas.width = canvas.getBoundingClientRect().width;
-canvas.height = canvas.getBoundingClientRect().height;
-var ctx = canvas.getContext("2d");
-window.addEventListener('resize',function(){figuresize();},false);
+(function() {
+
 
 function randI(min, max) {
   min = Math.ceil(min);
@@ -34,472 +13,467 @@ function randB() {
 }
 
 function rads(deg) {
-	return deg*(Math.PI/180);
+	return deg * (Math.PI / 180);
 }
 
 //evironment parameters
 var env = {
+	ctx: null,
+	frameID: 0,
+	things: [],
+	bgPattern: null,
 	xcount : 10,
 	ycount : 10,
-	cradius : 25,
-	cgap : 25,
-	thickness : 8,
+	circleRadius : 25,
+	circleGap : 25,
+	lineThickness : 8,
 	thingcount : 50,
 	offset : 0,
 	timescale : 0.5,
 	fps: 0,
 	fpslock: true,
 };
-//array of things
-var things = [];
 
-var bgpattern;
+// create background as a pattern to tile later
+function createBG() {
+	const backgroundCanvas = document.createElement("canvas");
+	const context = backgroundCanvas.getContext("2d");
+	const twoPi = 2 * Math.PI;
+	const size = 2 * env.circleRadius + env.circleGap;
+	backgroundCanvas.width = size;
+	backgroundCanvas.height = size;
+	context.fillStyle = "rgb(13,10,10)";
+	context.fillRect(0, 0, backgroundCanvas.width, backgroundCanvas.height);
+	// cant offset background easily later so must draw 4 corners seperately
 
-function createBG()
-{
-	var bgcanvas = document.createElement('canvas');
-	var bgctx = bgcanvas.getContext('2d');
-	var pi = Math.PI;
-	bgcanvas.width = 2*env.cradius+env.cgap;
-	bgcanvas.height = 2*env.cradius+env.cgap;
-	bgctx.fillStyle = 'rgb(13,10,10)';	
-	bgctx.fillRect(0,0,bgcanvas.width,bgcanvas.height);
-	//cant offset bg later so must create 4 corners seperately
-	var p = 2*env.cradius+env.cgap;
-	bgctx.strokeStyle='rgb(25,20,20)';
-	bgctx.lineWidth = env.thickness;
-	if (bgctx.lineWidth > env.cradius) bgctx.lineWidth = env.cradius;
-	bgctx.beginPath();
-	bgctx.arc(0,0,env.cradius,2*pi,false);
-	bgctx.stroke();
-	bgctx.beginPath();
-	bgctx.arc(0,p,env.cradius,0,2*pi,false);
-	bgctx.stroke();
-	bgctx.beginPath();
-	bgctx.arc(p,0,env.cradius,0,2*pi,false);
-	bgctx.stroke();
-	bgctx.beginPath();
-	bgctx.arc(p,p,env.cradius,0,2*pi,false);
-	bgctx.stroke();
-	bgctx.fillStyle='rgb(18,15,15)';
-	bgctx.beginPath();
-	bgctx.arc(0,0,env.cradius/2,0,2*pi,false);
-	bgctx.fill();
-	bgctx.beginPath();
-	bgctx.arc(0,p,env.cradius/2,0,2*pi,false);
-	bgctx.fill();
-	bgctx.beginPath();
-	bgctx.arc(p,0,env.cradius/2,0,2*pi,false);
-	bgctx.fill();
-	bgctx.beginPath();
-	bgctx.arc(p,p,env.cradius/2,0,2*pi,false);
-	bgctx.fill();
-	var bgp = ctx.createPattern(bgcanvas, 'repeat');
-	return bgp;
+	// outer circles
+	context.strokeStyle = "rgb(25,20,20)";
+	context.lineWidth = env.lineThickness;
+	if (context.lineWidth > env.circleRadius) context.lineWidth = env.circleRadius;
+	context.beginPath();
+	context.arc(0, 0, env.circleRadius, 0, twoPi, false);
+	context.stroke();
+	context.beginPath();
+	context.arc(0, size, env.circleRadius, 0, twoPi, false);
+	context.stroke();
+	context.beginPath();
+	context.arc(size, 0, env.circleRadius, 0, twoPi, false);
+	context.stroke();
+	context.beginPath();
+	context.arc(size, size, env.circleRadius, 0, twoPi, false);
+	context.stroke();
+
+	// inner circles
+	context.fillStyle = "rgb(18,15,15)";
+	context.beginPath();
+	context.arc(0, 0, env.circleRadius / 2, 0, twoPi, false);
+	context.fill();
+	context.beginPath();
+	context.arc(0, size, env.circleRadius / 2, 0, twoPi, false);
+	context.fill();
+	context.beginPath();
+	context.arc(size, 0, env.circleRadius / 2, 0, twoPi, false);
+	context.fill();
+	context.beginPath();
+	context.arc(size, size, env.circleRadius / 2, 0, twoPi, false);
+	context.fill();
+
+	const bgPattern = env.ctx.createPattern(backgroundCanvas, "repeat");
+	return bgPattern;
 }
 
-function createCSeg(thisx, thisy, thisd, cw, dend)
-{
+const ENUM_SEGMENT_ARC = 1;
+const ENUM_SEGMENT_LINE = 2;
+
+function createArcSegment(indexX, indexY, fromAngle, toAngle, cw) {
+	// calculate exact coordinates
+	const ax = indexX * (2 * env.circleRadius + env.circleGap);
+	const ay = indexY * (2 * env.circleRadius + env.circleGap);
+
 	return {
-		typ : 1,
-		x : thisx, //circle x
-		y : thisy, // cricle y
-		d : thisd, //current deg
-		ds : thisd, //starting deg
-		cw : cw, //clockwise?
-		dend : dend //where deg to stop
+		type: ENUM_SEGMENT_ARC,
+		x: ax,
+		y: ay,
+		indexX: indexX,
+		indexY: indexY,
+		fromAngle: fromAngle,
+		angle: fromAngle,
+		toAngle: toAngle,
+		cw: cw
 	};
 }
 
-function createLSeg(fromx, fromy, fromd, tox, toy, tod, tocw, tonx, tony)
-{
+function createLineSegment(fromIndexX, fromIndexY, toIndexX, toIndexY, fromAngle, toAngle, cw) {
+	// calculate exact coordinates
+	const fromX = fromIndexX * (2 * env.circleRadius + env.circleGap) + Math.cos(rads(fromAngle)) * env.circleRadius;
+	const fromY = fromIndexY * (2 * env.circleRadius + env.circleGap) + Math.sin(rads(fromAngle)) * env.circleRadius;
+	const toX = toIndexX * (2 * env.circleRadius + env.circleGap) + Math.cos(rads(toAngle)) * env.circleRadius;
+	const toY = toIndexY * (2 * env.circleRadius + env.circleGap) + Math.sin(rads(toAngle)) * env.circleRadius;
+
 	return {
-		typ : 2,
-		fromx : fromx,
-		fromy : fromy,
-		fromd : fromd,
-		tox : tox,
-		toy : toy,
-		tod : tod,
-		x : fromx,
-		y : fromy,
-		tocw : tocw,
-		tonx : tonx,
-		tony : tony
+		type: ENUM_SEGMENT_LINE,
+		fromX: fromX,
+		fromY: fromY,
+		x: fromX,
+		y: fromY,
+		toX: toX,
+		toY: toY,
+		toAngle: toAngle,
+		cw: cw,
+		toIndexX: toIndexX,
+		toIndexY: toIndexY
 	};
 }
 
-function gowhere(r, cw)
-{
-	if (r==null) {
+// determine start/end offsets/angles for line movments
+function lineJoin(angle, cw) {
+	if (angle == null) {
 		console.error("No angle?");
 	}
-	while (r >= 360) r = r - 360;
-	while (r < 0) r = r + 360;
+	// clamp angles to normal range
+	while (angle >= 360) angle = angle - 360;
+	while (angle < 0) angle = angle + 360;
 
-	var ox, oy;
-	var newr = r;
-	var dist= randI(1,2);
+	let offsetX, offsetY;
+	let newAngle = angle;
 
-	// standard joins
-	if (r == 0) {ox = 0; oy = 1;}
-	else if (r == 45) {ox = -1; oy = 1;}
-	else if (r == 90) {ox = -1; oy = 0;}
-	else if (r == 135) {ox = -1; oy = -1;}
-	else if (r == 180) {ox = 0; oy = -1;}
-	else if (r == 225) {ox = 1; oy = -1;}
-	else if (r == 270) {ox = 1; oy = 0;}
-	else if (r == 315) {ox = 1; oy = 1;}
-	if (!cw) {ox = -ox; oy = -oy;}
-	ox = ox * dist;
-	oy = oy * dist;
-
-	var flip = false;
-	if (randB())
-	{
-		if (r == 45 && cw) {ox = 0; oy = 1; newr = 225; flip=true;}
-		else if (r == 135 && cw) {ox = -1; oy = 0; newr = 315; flip=true;}
-		else if (r == 225 && cw) {ox = 0; oy = -1; newr = 45; flip=true;}
-		else if (r == 315 && cw) {ox = 1; oy = 0; newr = 135; flip=true;}
-		else if (r == 45 && !cw) {ox = 1; oy = 0; newr = 225; flip=true;}
-		else if (r == 135 && !cw) {ox = 0; oy = 1; newr = 315; flip=true;}
-		else if (r == 225 && !cw) {ox = -1; oy = 0; newr = 45; flip=true;}
-		else if (r == 315 && !cw) {ox = 0; oy = -1; newr = 135; flip=true;}
+	// standard joins, rotation direction stays the same
+	switch (angle) {
+		case 0:   offsetX =  0; offsetY =  1; break;
+		case 45:  offsetX = -1; offsetY =  1; break;
+		case 90:  offsetX = -1; offsetY =  0; break;
+		case 135: offsetX = -1; offsetY = -1; break;
+		case 180: offsetX =  0; offsetY = -1; break;
+		case 225: offsetX =  1; offsetY = -1; break;
+		case 270: offsetX =  1; offsetY =  0; break;
+		case 315: offsetX =  1; offsetY =  1; break;
 	}
-	return {ox:ox, oy:oy, newr:newr, flip:flip};
-}
+	// must flip offsets if counterclockwise
+	if (!cw) {offsetX = -offsetX; offsetY = -offsetY;}
 
-function addSegment(thing)
-{
-	var newpart;
-	var top = thing.parts[0];
-	if (top==null) {console.error("No things?");}
-	if (top.typ == 1)
-	{
-		//currently a cirle, lets add a line
-		var cx = top.x*(2*env.cradius+env.cgap) + Math.cos(rads(top.dend))*env.cradius;
-		var cy = top.y*(2*env.cradius+env.cgap) + Math.sin(rads(top.dend))*env.cradius;
-		var cd = top.dend;
-		var nx, ny, newd, flip;
-		var gw = gowhere(cd, top.cw)
-		nx = gw.ox;
-		ny = gw.oy;
-		newd = gw.newr;
-		flip = gw.flip;
-		if (nx+top.x < 0 || nx+top.x > env.xcount || ny+top.y < 0 || ny+top.y > env.ycount)
-		{
-			if (nx > 0) nx = 1;
-			if (ny > 0) ny = 1;
-			if (nx < 0) nx = -1;
-			if (ny < 0) ny = -1;
+	// sometimes skip and join with non adjacent circles
+	const distance = randI(1, 2);
+	offsetX *= distance;
+	offsetY *= distance;
+
+	// flip joins, rotation direction changes (only with diagonals)
+	let flipRotation = false;
+	if (randB()) {
+		if (cw) {
+			switch (angle) {
+				case 45:  offsetX =  0; offsetY =  1; newAngle = 225; flipRotation = true; break;
+				case 135: offsetX = -1; offsetY =  0; newAngle = 315; flipRotation = true; break;
+				case 225: offsetX =  0; offsetY = -1; newAngle =  45; flipRotation = true; break;
+				case 315: offsetX =  1; offsetY =  0; newAngle = 135; flipRotation = true; break;
+			}
+		} else {
+			switch (angle) {
+				case 45:  offsetX =  1; offsetY =  0; newAngle = 225; flipRotation = true; break;
+				case 135: offsetX =  0; offsetY =  1; newAngle = 315; flipRotation = true; break;
+				case 225: offsetX = -1; offsetY =  0; newAngle =  45; flipRotation = true; break;
+				case 315: offsetX =  0; offsetY = -1; newAngle = 135; flipRotation = true; break;
+			}
 		}
-		nx = top.x + nx;
-		ny = top.y + ny;
-		var tocw = top.cw;
-		if (flip) {tocw = !tocw;}
+	}
+	return {offsetX:offsetX, offsetY:offsetY, newAngle:newAngle, flipRotation:flipRotation};
+}
 
-		var pnx = nx*(2*env.cradius+env.cgap) + Math.cos(rads(newd))*env.cradius;
-		var pny = ny*(2*env.cradius+env.cgap) + Math.sin(rads(newd))*env.cradius;
-		newpart = createLSeg(cx, cy, cd, pnx, pny, newd, tocw, nx, ny);
-		thing.parts.unshift(newpart);
+// determine new segment action after line/arc movement
+function addSegment(thing) {
+	const frontSegment = thing.segments[0];
+	if (frontSegment == null) {
+		console.error("No things?");
+	}
+
+	// done arc around cirle, now add a line join
+	if (frontSegment.type == ENUM_SEGMENT_ARC) {
+		const lineEnd = lineJoin(frontSegment.toAngle, frontSegment.cw)
+		let toIndexX = lineEnd.offsetX;
+		let toIndexY = lineEnd.offsetY;
+
+		// prevent line from moving off the screen
+		if (toIndexX + frontSegment.indexX < 0
+			|| toIndexX + frontSegment.indexX > env.xcount
+			|| toIndexY + frontSegment.indexY < 0
+			|| toIndexY + frontSegment.indexY > env.ycount
+		) {
+			if (toIndexX > 0) toIndexX = 1;
+			if (toIndexY > 0) toIndexY = 1;
+			if (toIndexX < 0) toIndexX = -1;
+			if (toIndexY < 0) toIndexY = -1;
+		}
+
+		// apply the offset to current index
+		toIndexX = frontSegment.indexX + toIndexX;
+		toIndexY = frontSegment.indexY + toIndexY;
+
+		// keep current orientation direction unless flipping
+		const flipRotation = lineEnd.flipRotation;
+		let cw = frontSegment.cw;
+		if (flipRotation) {cw = !cw;}
+
+		const fromIndexX = frontSegment.indexX;
+		const fromIndexY = frontSegment.indexY;
+		const fromAngle = frontSegment.toAngle;
+		const toAngle = lineEnd.newAngle;
+
+		const newSegment = createLineSegment(fromIndexX, fromIndexY, toIndexX, toIndexY, fromAngle, toAngle, cw);
+
+		// add the new segment to the front
+		thing.segments.unshift(newSegment);
 		return;
 	}
-	if (top.typ == 2)
-	{
-		//currently a line, lets add a circle
-		var dstart = top.tod;
-		while (dstart >= 360) dstart = dstart - 360;
-		while (dstart < 0) dstart = dstart + 360;
-		var nextd = 45*(randI(1,4));
-		// wrap around at bounds
-		if (top.tonx==0 || top.tonx==env.xcount || top.tony==0 || top.tony==env.ycount) nextd = 45*4;
-		var cw = top.tocw;
-		if (cw) nextd = dstart + nextd;
-		if (!cw) nextd = dstart - nextd;
-		newpart = createCSeg(top.tonx, top.tony, dstart, cw, nextd);
-		thing.parts.unshift(newpart)
+
+	// done joining as a line, now arc around a circle
+	if (frontSegment.type == ENUM_SEGMENT_LINE) {
+		let fromAngle = frontSegment.toAngle;
+		while (fromAngle >= 360) fromAngle = fromAngle - 360;
+		while (fromAngle < 0) fromAngle = fromAngle + 360;
+		let toAngle = 45 * (randI(1,4));
+
+		// wrap around at screen bounds
+		if (frontSegment.toIndexX == 0
+			|| frontSegment.toIndexX == env.xcount
+			|| frontSegment.toIndexY == 0
+			|| frontSegment.toIndexY == env.ycount
+		) toAngle = 180;
+
+		const cw = frontSegment.cw;
+		if (cw) toAngle = fromAngle + toAngle;
+		else toAngle = fromAngle - toAngle;
+		const indexX = frontSegment.toIndexX;
+		const indexY = frontSegment.toIndexY;
+
+		const newSegment = createArcSegment(indexX, indexY, fromAngle, toAngle, cw);
+		// add the new segment to the front
+		thing.segments.unshift(newSegment);
 		return;
 	}
 }
 
-function removeSegment(thing)
-{
-	thing.parts.pop();
+function removeSegment(thing) {
+	thing.segments.pop();
 }
 
-function createThing(startx, starty)
-{
-	var thing = {
-		speed : 100 + randI(1,40),
+function createThing(xIndex, yIndex) {
+	const thing = {
+		speed : 100 + randI(1, 40),
 		endspeed : 10,
-		parts : [],
-		color : [randI(128,255), randI(128,255), randI(128,255)],
+		segments : [],
+		color : [randI(128, 255), randI(128, 255), randI(128, 255)],
 	};
-	// create initial segment
-	var cw = randB();
-	var startd = 45*randI(0,7);
-	var nextd = 45*randI(1,4);
-	if (cw) nextd = startd + nextd;
-	if (!cw) nextd = startd - nextd;
-	thing.parts.push(createCSeg(startx, starty, startd, cw, nextd));
+	// create initial segment (always an arc)
+	const cw = randB();
+	let fromAngle = 45 * randI(0,7);
+	let toAngle = 45 * randI(1,4);
+	if (cw) toAngle = fromAngle + toAngle;
+	else toAngle = fromAngle - toAngle;
+	thing.segments.push(createArcSegment(xIndex, yIndex, fromAngle, toAngle, cw));
 	return thing;
 }
 
-function updateThing(thing, dt)
-{
-	var ts = env.timescale;
-	var speed = thing.speed;
-	var endspeed = thing.endspeed;
-	var newSegment = false;
-	var endSegment = false;
+function updateThing(thing, dt) {
+	const ts = env.timescale;
+	const speed = thing.speed;
+	const endspeed = thing.endspeed;
+	let addNewSegment = false;
+	let removeEndSegment = false;
 
-	if (thing.parts.length == 0) return;
-	//front part
-	var part = thing.parts[0];
-	if (part.typ == 1)
-	{
-		if (part.cw)
-		{
-			part.d = part.d + speed*dt*4*ts*((1/env.cradius)*20);
-			if (part.d > part.dend) {part.d = part.dend; newSegment = true;}
+	if (thing.segments.length == 0) return;
+
+	// move front segment
+	let segment = thing.segments[0];
+	if (segment.type == ENUM_SEGMENT_ARC) {
+		if (segment.cw) {
+			segment.angle = segment.angle + speed * dt * 4 * ts * ((1 / env.circleRadius) * 20);
+			if (segment.angle > segment.toAngle) {segment.angle = segment.toAngle; addNewSegment = true;}
 		}
-		else
-		{
-			part.d = part.d - speed*dt*4*ts*((1/env.cradius)*20);
-			if (part.d < part.dend) {part.d = part.dend; newSegment = true;}
+		else {
+			segment.angle = segment.angle - speed * dt * 4 * ts * ((1 / env.circleRadius) * 20);
+			if (segment.angle < segment.toAngle) {segment.angle = segment.toAngle; addNewSegment = true;}
 		}
 	}
-	else if (part.typ == 2)
-	{
-		var dx = Math.abs(part.fromx-part.tox);
-		var dy = Math.abs(part.fromy-part.toy);
-		var sx = dx/dy;
-		if (dx == 0 || dy == 0) sx = 1;
-		if (part.tox > part.fromx)
-		{
-			part.x = part.x + speed*dt*sx*ts;
-			if (part.x >= part.tox) {part.x = part.tox; newSegment = true;}
-		}
-		else if (part.tox < part.fromx)
-		{
-			part.x = part.x - speed*dt*sx*ts;
-			if (part.x <= part.tox) {part.x = part.tox; newSegment = true;}
+	else if (segment.type == ENUM_SEGMENT_LINE) {
+		const dx = Math.abs(segment.fromX - segment.toX);
+		const dy = Math.abs(segment.fromY - segment.toY);
+		const sx = (dx == 0 || dy == 0) ? 1 : dx / dy;
+		if (segment.toX > segment.fromX) {
+			segment.x = segment.x + speed * dt * sx * ts;
+			if (segment.x >= segment.toX) {segment.x = segment.toX; addNewSegment = true;}
+		} else if (segment.toX < segment.fromX) {
+			segment.x = segment.x - speed * dt * sx * ts;
+			if (segment.x <= segment.toX) {segment.x = segment.toX; addNewSegment = true;}
 		}
 
-		if (part.toy > part.fromy)
-		{
-			part.y = part.y + speed*dt*1*ts;
-			if (part.y >= part.toy) {part.y = part.toy; newSegment = true;}
-		}
-		else if (part.toy < part.fromy)
-		{
-			part.y = part.y - speed*dt*1*ts;
-			if (part.y <= part.toy) {part.y = part.toy; newSegment = true;}
+		if (segment.toY > segment.fromY) {
+			segment.y = segment.y + speed * dt * 1 * ts;
+			if (segment.y >= segment.toY) {segment.y = segment.toY; addNewSegment = true;}
+		} else if (segment.toY < segment.fromY) {
+			segment.y = segment.y - speed * dt * 1 * ts;
+			if (segment.y <= segment.toY) {segment.y = segment.toY; addNewSegment = true;}
 		}
 	}
-	//tail part
-	part = thing.parts[thing.parts.length-1];
-	if (part.typ == 1)
-	{
-		if (part.cw)
-		{
-			part.ds = part.ds + endspeed*dt*4*ts*((1/env.cradius)*20);
-			if (part.ds > part.d) {endSegment = true;}
-		}
-		else
-		{
-			part.ds = part.ds - endspeed*dt*4*ts*((1/env.cradius)*20);
-			if (part.ds < part.d) {endSegment = true;}
+
+	// move end segment
+	segment = thing.segments[thing.segments.length - 1];
+	if (segment.type == ENUM_SEGMENT_ARC) {
+		if (segment.cw) {
+			segment.fromAngle = segment.fromAngle + endspeed * dt * 4 * ts * ((1 / env.circleRadius) * 20);
+			if (segment.fromAngle > segment.angle) {removeEndSegment = true;}
+		} else {
+			segment.fromAngle = segment.fromAngle - endspeed * dt * 4 * ts * ((1 / env.circleRadius) * 20);
+			if (segment.fromAngle < segment.angle) {removeEndSegment = true;}
 		}
 	}
-	else if (part.typ == 2)
-	{
-		var dx = Math.abs(part.fromx-part.tox);
-		var dy = Math.abs(part.fromy-part.toy);
-		var sx = dx/dy;
-		if (dx == 0 || dy == 0) sx = 1;
-		if (part.tox > part.fromx)
-		{
-			part.fromx = part.fromx + endspeed*dt*sx*ts;
-			if (part.fromx >= part.x) {endSegment = true;}
-		}
-		else if (part.tox < part.fromx)
-		{
-			part.fromx = part.fromx - endspeed*dt*sx*ts;
-			if (part.fromx <= part.x) {endSegment = true;}
+	else if (segment.type == ENUM_SEGMENT_LINE) {
+		const dx = Math.abs(segment.fromX - segment.toX);
+		const dy = Math.abs(segment.fromY - segment.toY);
+		const sx = (dx == 0 || dy == 0) ? 1 : dx / dy;
+		if (segment.toX > segment.fromX) {
+			segment.fromX = segment.fromX + endspeed * dt * sx * ts;
+			if (segment.fromX >= segment.x) {removeEndSegment = true;}
+		} else if (segment.toX < segment.fromX) {
+			segment.fromX = segment.fromX - endspeed * dt * sx * ts;
+			if (segment.fromX <= segment.x) {removeEndSegment = true;}
 		}
 
-		if (part.toy > part.fromy)
-		{
-			part.fromy = part.fromy + endspeed*dt*1*ts;
-			if (part.fromy >= part.y) {endSegment = true;}
-		}
-		else if (part.toy < part.fromy)
-		{
-			part.fromy = part.fromy - endspeed*dt*1*ts;
-			if (part.fromy <= part.y) {endSegment = true;}
+		if (segment.toY > segment.fromY) {
+			segment.fromY = segment.fromY + endspeed * dt * 1 * ts;
+			if (segment.fromY >= segment.y) {removeEndSegment = true;}
+		} else if (segment.toY < segment.fromY) {
+			segment.fromY = segment.fromY - endspeed * dt * 1 * ts;
+			if (segment.fromY <= segment.y) {removeEndSegment = true;}
 		}
 	}
-	if (newSegment) addSegment(thing);
-	if (endSegment) removeSegment(thing);
-	thing.speed = thing.speed + 35*dt*ts;
+
+	// if the front segment has reached its position, add another
+	if (addNewSegment) addSegment(thing);
+	// if the last segment has reached its position, remove it
+	if (removeEndSegment) removeSegment(thing);
+
+	// update speed of front and last segments
+	thing.speed = thing.speed + 35 * dt * ts;
 	if (thing.speed > 240) thing.speed = 200;
-	thing.endspeed = thing.endspeed + 45*dt*ts;
+	thing.endspeed = thing.endspeed + 45 * dt * ts;
 	if (thing.endspeed > 260) thing.endspeed = 240;
 }
 
-function drawThing(thing)
-{
-	var so = env.offset;
-	var r = env.cradius;
-	var g = env.cgap;
-	//love.graphics.setLineWidth(2*env.thickness)
-	//for i,p in ipairs(thing.parts) do
-	ctx.strokeStyle = 'rgb('+thing.color[0]+','+thing.color[1]+','+thing.color[2]+')';
-	ctx.beginPath();
-	for (var i=0; i<thing.parts.length; i++)
-	{
-		var p = thing.parts[i];
-		if (p.typ == 1)
-		{
-			var x = p.x;
-			var y = p.y;
-			var sg = p.ds;
-			var eg = p.d;
-			//love.graphics.setColor(thing.color)
-			//if debug then love.graphics.setColor(255-thing.color[1],255-thing.color[2],255-thing.color[3]) end
-			//love.graphics.arc("line", "open", so+x*(2*r+g), so+y*(2*r+g), env.cradius, math.rad(sg), math.rad(eg), 20)
-			var cw = false;
-			if (sg > eg) cw = true;
-			//doArc(so+x*(2*r+g), so+y*(2*r+g), env.cradius, rads(sg), rads(eg));
-			var ax = so+x*(2*r+g);
-			var ay = so+y*(2*r+g);
-			ctx.moveTo(ax+env.cradius*Math.cos(rads(sg)), ay+env.cradius*Math.sin(rads(sg)));
-			ctx.arc(ax, ay, env.cradius, rads(sg), rads(eg),cw);
-		}
-		else if (p.typ == 2)
-		{
-			//love.graphics.setColor(thing.color)
-			//love.graphics.line(so+p.fromx, so+p.fromy, so+p.x, so+p.y)
-			//doLine(so+p.fromx, so+p.fromy, so+p.x, so+p.y);
-			ctx.moveTo(so+p.fromx,so+p.fromy);
-			ctx.lineTo(so+p.x,so+p.y);
+function drawThing(thing) {
+	env.ctx.strokeStyle = "rgb(" + thing.color[0] + "," + thing.color[1] + "," + thing.color[2] + ")";
+	env.ctx.beginPath();
+	for (let i = 0, j = thing.segments.length; i < j; ++i) {
+		const segment = thing.segments[i];
+		if (segment.type == ENUM_SEGMENT_ARC) {
+			env.ctx.moveTo(
+				env.offset + segment.x + env.circleRadius * Math.cos(rads(segment.fromAngle)),
+				env.offset + segment.y + env.circleRadius * Math.sin(rads(segment.fromAngle))
+			);
+			env.ctx.arc(env.offset + segment.x, env.offset + segment.y, env.circleRadius, rads(segment.fromAngle), rads(segment.angle), !segment.cw);
+		} else if (segment.type == ENUM_SEGMENT_LINE) {
+			env.ctx.moveTo(env.offset + segment.fromX, env.offset + segment.fromY);
+			env.ctx.lineTo(env.offset + segment.x, env.offset + segment.y);
 		}
 	}
-	ctx.stroke();
+	env.ctx.stroke();
 }
-function update(dt)
-{
+function update(dt) {
 	//limit large dt
 	//if (dt > 1) dt = 0;
 	//position things
-	for (var i=0; i<things.length; i++)
-	{
-		updateThing(things[i], dt);
+	for (let i = 0; i < env.things.length; ++i) {
+		updateThing(env.things[i], dt);
 	}
+
 	//slowly add more things
-	if (things.length < env.thingcount)
-	{
-		if (randI(1,10) == 10)
-		{
-			things.push(createThing(randI(1,env.xcount-0), randI(1, env.ycount-0)));
+	if (env.things.length < env.thingcount) {
+		if (randI(1, 10) == 10) {
+			env.things.push(createThing(randI(1, env.xcount - 0), randI(1, env.ycount - 0)));
 		}
 	}
+
 	//remove finished things
-	for (var i=0; i<things.length; i++)
-	{
-		if (things[i].parts.length == 0)
-		{
-			things.splice(i, 1);
+	for (let i = 0; i < env.things.length; ++i) {
+		if (env.things[i].segments.length == 0) {
+			env.things.splice(i, 1);
 		}
 	}
 }
 
-function draw(dt)
-{
-	//ctx.fillStyle = 'rgb(13,10,10)';	
-	//ctx.fillRect(0,0,canvas.width,canvas.height);
-	//ctx.clearRect(0,0,canvas.width, canvas.height);
-	var so = env.offset;
-	var r = env.cradius;
-	var g = env.cgap;
-	var time = dt;
-	ctx.fillStyle = bgpattern;
-	ctx.fillRect(0,0,canvas.width, canvas.height);
-	//old background draw (not cached)
-	/*
-	for (var ix=0;ix<=env.xcount;ix++)
-	{
-		for (var iy=0; iy<=env.ycount; iy++)
-		{
-			//var nt = 2*Math.sin((ix+iy+time*3)/2);
-			//var nd = 2*Math.sin((ix-iy+time*3)/4);
-			var x = so+ix*(2*r+g);
-			var y = so+iy*(2*r+g);
-			//ctx.strokeStyle='rgb('+(25+nd)+','+(20+nd)+','+(20+nd)+')';
-			ctx.strokeStyle='rgb(25,20,20)';
-			ctx.lineWidth = env.thickness;
-			ctx.beginPath();
-			ctx.arc(x,y,env.cradius,0,2*Math.PI,false);
-			ctx.stroke();
-			//ctx.fillStyle='rgb('+(18+nt*1.2)+','+(15+nt)+','+(15+nt)+')';
-			ctx.fillStyle='rgb(18,15,15)';
-			ctx.beginPath();
-			ctx.arc(x,y,env.cradius/2,0,2*Math.PI,false);
-			ctx.fill();
-		}
-	}
-	*/
+function draw() {
+	// fill the background pattern
+	env.ctx.fillStyle = env.bgPattern;
+	env.ctx.fillRect(0, 0, env.ctx.canvas.width, env.ctx.canvas.height);
 
-	ctx.lineWidth = env.thickness;
-	if (ctx.lineWidth > env.cradius) ctx.lineWidth = env.cradius;
-	ctx.lineCap = 'round';
-	for (var i=0;i<things.length;i++)
-	{
-		drawThing(things[i]);
-		//debugThing(t,i)
+	// draw the lines
+	env.ctx.lineWidth = env.lineThickness;
+	if (env.ctx.lineWidth > env.circleRadius) env.ctx.lineWidth = env.circleRadius;
+	env.ctx.lineCap = "round";
+	for (let i = 0; i < env.things.length; ++i) {
+		drawThing(env.things[i]);
 	}
+
 	//debug info onscreen
-	if (false)
-	{
-		ctx.font = "12px sans-serif";
-		ctx.fillStyle = "rgb(100,100,100)";
-		ctx.textBaseline = "top";
-		ctx.fillText("Things: "+things.length+"/"+env.thingcount,10,10);
-		ctx.fillText("FPS: "+env.fps,10,25);
-		ctx.fillText("env: "+JSON.stringify(env, null, 2),10,40);
+	if (false) {
+		env.ctx.font = "12px sans-serif";
+		env.ctx.fillStyle = "rgb(100,100,100)";
+		env.ctx.textBaseline = "top";
+		env.ctx.fillText("Things: " + env.things.length + "/" + env.thingcount, 10, 10);
+		env.ctx.fillText("FPS: " + env.fps, 10, 25);
+		env.ctx.fillText("env: " + JSON.stringify(env, null, 2), 10, 40);
 	}
 }
 
-function figuresize()
-{
-	canvas.width = canvas.getBoundingClientRect().width;
-	canvas.height = canvas.getBoundingClientRect().height;
-	var w = canvas.width;
-	var h = canvas.height;
-	env.xcount = Math.ceil(w/(2*env.cradius+env.cgap))-1;
-	env.ycount = Math.ceil(h/(2*env.cradius+env.cgap))-1;
-	env.offset = 0;
-	bgpattern = createBG();
+function setupContext() {
+	//create container
+	const container = document.createElement("div");
+	container.style.width = "100%";
+	container.style.height = "100%";
+	container.style.position = "relative";
+	container.id = "linesdemo";
+	//create canvas
+	const canvas = document.createElement("canvas");
+	canvas.style.width = "100%";
+	canvas.style.height = "100%";
+	canvas.style.backgroundColor = "rgb(13,10,10)";
+	canvas.mozOpaque = true;
+	container.appendChild(canvas);
+	//insert at position
+	const scripts = document.getElementsByTagName("script")
+	const script = scripts[scripts.length - 1];
+	script.parentNode.insertBefore(container,script);
+	//set size
+	const rect = canvas.getBoundingClientRect();
+	canvas.width = rect.width;
+	canvas.height = rect.height;
+	const ctx = canvas.getContext("2d", {alpha: false});
+	window.addEventListener("resize", onResize, false);
+	env.ctx = ctx;
 }
 
-function run()
-{
-	figuresize();
-	var last = performance.now() / 1000;
-	var fpsThreshold = 0;	
-	window.requestAnimationFrame(tickweb);
+function onResize() {
+	const rect = env.ctx.canvas.getBoundingClientRect();
+	env.ctx.canvas.width = rect.width;
+	env.ctx.canvas.height = rect.height;
+	env.xcount = Math.ceil(env.ctx.canvas.width / (2 * env.circleRadius + env.circleGap)) - 1;
+	env.ycount = Math.ceil(env.ctx.canvas.height / (2 * env.circleRadius + env.circleGap)) - 1;
+	env.offset = 0;
+	env.bgPattern = createBG();
+}
 
-	function tickweb() {
-		// Keep animating
-		window.requestAnimationFrame(tickweb);
+function startAnimation() {
+	onResize();
+	let last = performance.now() / 1000;
+	let fpsThreshold = 0;
+	env.frameID = window.requestAnimationFrame(onAnimationFrame);
 
-		// Figure out how much time passed since the last animation
-		var now = performance.now() / 1000;
-		var dt = Math.min(now - last, 1);
+	function onAnimationFrame() {
+		env.frameID = window.requestAnimationFrame(onAnimationFrame);
+
+		const now = performance.now() / 1000;
+		const dt = Math.min(now - last, 1);
 		last = now;
 
-		// If there is an FPS limit, abort updating the animation if we reached the desired FPS
+		// fps limit
 		if (env.fps > 0 && env.fpslock) {
 			fpsThreshold += dt;
 			if (fpsThreshold < 1.0 / env.fps) {
@@ -508,10 +482,13 @@ function run()
 			fpsThreshold -= 1.0 / env.fps;
 		}
 
-		// My wallpaper animation/drawing code goes here!
 		update(dt);
-		draw(dt);
+		draw();
 	}
+}
+
+function stopAnimation() {
+	window.cancelAnimationFrame(env.frameID);
 }
 
 //wallpaper engine events
@@ -519,25 +496,25 @@ window.wallpaperPropertyListener = {
 	applyUserProperties: function(properties) {
 		if (properties.linecount) {
 			env.thingcount = properties.linecount.value;
-			while (things.length > env.thingcount) {
-				things.pop();
+			while (env.things.length > env.thingcount) {
+				env.things.pop();
 			}
 		}
 		if (properties.linethick) {
-			env.thickness = properties.linethick.value;
-			bgpattern = createBG();
+			env.lineThickness = properties.linethick.value;
+			env.bgPattern = createBG();
 		}
 		if (properties.circleradius) {
-			env.cradius = properties.circleradius.value;
-			env.cgap = properties.circleradius.value;
-			figuresize();
+			env.circleRadius = properties.circleradius.value;
+			env.circleGap = properties.circleradius.value;
+			onResize();
 			//FIXME line segment absolute positions are cached so must be cleared
-			while (things.length > 0) {
-				things.pop();
+			while (env.things.length > 0) {
+				env.things.pop();
 			}
 		}
 		if (properties.playbackrate) {
-			env.timescale = properties.playbackrate.value/100.0;
+			env.timescale = properties.playbackrate.value / 100.0;
 		}
 		if (properties.fpslock) {
 			env.fpslock = properties.fpslock.value;
@@ -549,5 +526,6 @@ window.wallpaperPropertyListener = {
 		}
 	}
 };
-run();
+setupContext();
+startAnimation();
 })();
